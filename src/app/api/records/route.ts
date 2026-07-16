@@ -1,34 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import pool from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const filter = searchParams.get('filter') ?? 'today'
   const dateFrom = searchParams.get('dateFrom')
   const dateTo = searchParams.get('dateTo')
+  const line = searchParams.get('line')
+  const item = searchParams.get('item')
+  const mode = searchParams.get('mode')
+  const hasVideo = searchParams.get('hasVideo')
+  const hasPhoto = searchParams.get('hasPhoto')
+  const fields = searchParams.get('fields')
+  const limitParam = searchParams.get('limit')
 
   try {
-    let query = supabase
-      .from('line_records')
-      .select('*')
-      .order('recorded_at', { ascending: false })
-      .limit(500)
+    const conditions: string[] = []
+    const params: any[] = []
+    let idx = 1
 
     if (filter === 'today') {
       const s = new Date(); s.setHours(0, 0, 0, 0)
-      query = query.gte('recorded_at', s.toISOString())
+      conditions.push(`recorded_at >= $${idx++}`)
+      params.push(s.toISOString())
     } else if (filter === 'week') {
       const s = new Date(); s.setDate(s.getDate() - 7)
-      query = query.gte('recorded_at', s.toISOString())
+      conditions.push(`recorded_at >= $${idx++}`)
+      params.push(s.toISOString())
     } else if (filter === 'custom' && dateFrom && dateTo) {
-      query = query
-        .gte('recorded_at', `${dateFrom}T00:00:00`)
-        .lte('recorded_at', `${dateTo}T23:59:59`)
+      conditions.push(`recorded_at >= $${idx++}`)
+      params.push(`${dateFrom}T00:00:00`)
+      conditions.push(`recorded_at <= $${idx++}`)
+      params.push(`${dateTo}T23:59:59`)
     }
 
-    const { data, error } = await query
-    if (error) throw error
-    return NextResponse.json(data ?? [])
+    if (line) { conditions.push(`production_line = $${idx++}`); params.push(line) }
+    if (item) { conditions.push(`item_code = $${idx++}`); params.push(item) }
+    if (mode) { conditions.push(`mode = $${idx++}`); params.push(mode) }
+    if (hasVideo === 'true') { conditions.push('video_url IS NOT NULL') }
+    if (hasPhoto === 'true') { conditions.push('photo_urls IS NOT NULL') }
+
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''
+    const cols = fields || '*'
+    const limit = Math.min(Number(limitParam) || 500, 2000)
+
+    const { rows } = await pool.query(
+      `SELECT ${cols} FROM line_records ${where} ORDER BY recorded_at DESC LIMIT $${idx}`,
+      [...params, limit],
+    )
+    return NextResponse.json(rows)
   } catch (e) {
     return NextResponse.json([], { status: 500 })
   }
@@ -41,12 +61,11 @@ export async function PATCH(req: NextRequest) {
 
     const allowed = ['production_line','item_code','color_code','item_name','input_qty','good_qty','defect_qty','defect_types','defect_materials','memo','video_url','st_seconds','review_status','improve_due','review_comment']
     const numeric = new Set(['input_qty','good_qty','defect_qty','st_seconds'])
-    const nullableEmpty = new Set(['improve_due'])  // date 등: 빈 문자열 → null
+    const nullableEmpty = new Set(['improve_due'])
     const update: Record<string, any> = {}
     for (const k of allowed) {
       if (!(k in fields)) continue
       let v = fields[k]
-      // 숫자 컬럼: 빈 문자열/undefined → null, 그 외 숫자로 변환 (integer 에러 방지)
       if (numeric.has(k)) {
         v = (v === '' || v === null || v === undefined) ? null : Number(v)
         if (v !== null && Number.isNaN(v)) v = null
@@ -63,19 +82,26 @@ export async function PATCH(req: NextRequest) {
       update.yield_pct = inp > 0 ? ((good / inp) * 100).toFixed(2) : null
     }
 
-    const { error } = await supabase.from('line_records').update(update).eq('id', id)
-    if (error) throw error
+    const keys = Object.keys(update)
+    if (keys.length === 0) return NextResponse.json({ ok: true })
+    const sets = keys.map((k, i) => `${k} = $${i + 1}`)
+    const vals = keys.map(k => update[k])
+    vals.push(id)
 
-    // 수정 후 슬랙 재알림 (notify=true 일 때만)
+    await pool.query(
+      `UPDATE line_records SET ${sets.join(', ')} WHERE id = $${vals.length}`,
+      vals,
+    )
+
     if (notify) {
       try {
-        const { data: full } = await supabase.from('line_records').select('*').eq('id', id).single()
-        if (full) {
+        const { rows } = await pool.query('SELECT * FROM line_records WHERE id = $1', [id])
+        if (rows[0]) {
           const origin = new URL(req.url).origin
           await fetch(`${origin}/api/slack-notify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ record: full, edited: true }),
+            body: JSON.stringify({ record: rows[0], edited: true }),
           })
         }
       } catch { /* 알림 실패는 수정 성공에 영향 주지 않음 */ }
@@ -93,8 +119,7 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ ok: false, error: 'id 필요' }, { status: 400 })
 
-    const { error } = await supabase.from('line_records').delete().eq('id', id)
-    if (error) throw error
+    await pool.query('DELETE FROM line_records WHERE id = $1', [id])
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? '삭제 실패' }, { status: 500 })

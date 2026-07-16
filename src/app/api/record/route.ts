@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import pool from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -8,33 +8,36 @@ export async function POST(req: NextRequest) {
   const photoUrls: string[] = Array.isArray(body.photo_urls) ? body.photo_urls.filter(Boolean) : []
 
   try {
-    const { data, error } = await supabase
-      .from('line_records')
-      .insert({
-        mode: body.mode,
-        plan_id: body.plan_id ?? null,
-        item_code: body.item_code,
-        color_code: body.color_code,
-        item_name: body.item_name ?? null,
-        production_line: body.production_line,
-        worker: body.worker ?? null,
-        shift: body.shift ?? null,
-        input_qty: body.input_qty ?? null,
-        good_qty: body.good_qty ?? null,
-        defect_qty: body.defect_qty ?? null,
-        yield_pct: yieldPct,
-        defect_types: body.defect_types?.join(',') ?? null,
-        defect_materials: body.defect_materials?.join(',') ?? null,
-        st_seconds: body.st_seconds ?? null,
-        photo_urls: photoUrls.length ? photoUrls.join(',') : null,
-        video_url: body.video_url ?? null,
-        memo: body.memo ?? null,
-      })
-      .select('id')
-      .single()
+    const { rows } = await pool.query(
+      `INSERT INTO line_records
+        (mode, plan_id, item_code, color_code, item_name, production_line, worker, shift,
+         input_qty, good_qty, defect_qty, yield_pct, defect_types, defect_materials,
+         st_seconds, photo_urls, video_url, memo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       RETURNING id`,
+      [
+        body.mode,
+        body.plan_id ?? null,
+        body.item_code,
+        body.color_code,
+        body.item_name ?? null,
+        body.production_line,
+        body.worker ?? null,
+        body.shift ?? null,
+        body.input_qty ?? null,
+        body.good_qty ?? null,
+        body.defect_qty ?? null,
+        yieldPct,
+        body.defect_types?.join(',') ?? null,
+        body.defect_materials?.join(',') ?? null,
+        body.st_seconds ?? null,
+        photoUrls.length ? photoUrls.join(',') : null,
+        body.video_url ?? null,
+        body.memo ?? null,
+      ],
+    )
 
-    if (error) throw error
-    return NextResponse.json({ ok: true, id: data.id })
+    return NextResponse.json({ ok: true, id: rows[0].id })
   } catch (e) {
     return NextResponse.json({ ok: false, error: '저장 실패' }, { status: 500 })
   }

@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DEFECT_TYPES, RECORD_MODES } from '@/lib/config'
-import { supabase } from '@/lib/supabase'
 
 type Mode = 'quick' | 'lot'
 type Plan = { id:string; item_code:string; color_code:string; item_name:string; production_line:string; pack_plan_date:string; plan_qty:number; shift:string; lot_number:string; status:string }
@@ -140,12 +139,12 @@ function PhotoUpload({ photos, onPhotos }: { photos:string[]; onPhotos:(p:string
     setUploading(true)
     try {
       const blob=await compressImage(file)
-      const path=`${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
-      const { error }=await supabase.storage.from('line-photos').upload(path,blob,{cacheControl:'3600',upsert:false,contentType:'image/jpeg'})
-      if(error) throw error
-      const { data:urlData }=supabase.storage.from('line-photos').getPublicUrl(path)
-      const url=urlData.publicUrl
-      const next=[...photos]; next[slotRef.current]=url; onPhotos(next)
+      const formData=new FormData()
+      formData.append('file',blob,'photo.jpg')
+      const res=await fetch('/api/upload',{method:'POST',body:formData})
+      const data=await res.json()
+      if(!data.ok) throw new Error(data.error)
+      const next=[...photos]; next[slotRef.current]=data.url; onPhotos(next)
     } catch(err){ alert('사진 업로드 실패. 다시 시도해주세요.') }
     setUploading(false); e.target.value=''
   }
@@ -500,7 +499,7 @@ function RecordForm() {
           className="w-full py-5 bg-green-800 text-white rounded-2xl text-lg font-medium transition-all disabled:bg-gray-400 disabled:cursor-not-allowed shadow-lg shadow-green-900/20">
           {submitting?'저장 중...':'기록 제출'}
         </button>
-        <p className="text-center text-xs text-gray-400 mt-2">Supabase에 저장 · Google Sheets 5분 내 반영</p>
+        <p className="text-center text-xs text-gray-400 mt-2">DB에 저장 · Google Sheets 5분 내 반영</p>
       </div>
     </div>
   )

@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 type VideoItem = {
   recordId: string
@@ -13,7 +12,6 @@ type VideoItem = {
   desc: string
 }
 
-// 유튜브 URL → videoId 추출 (watch?v= / youtu.be / shorts / embed)
 function ytId(url:string): string|null {
   try {
     const u = new URL(url)
@@ -39,15 +37,17 @@ export default function VideosPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('line_records')
-      .select('id, recorded_at, production_line, item_code, color_code, item_name, video_url')
-      .not('video_url', 'is', null)
-      .order('recorded_at', { ascending: false })
-      .limit(1000)
+    const params = new URLSearchParams({
+      filter: 'all',
+      hasVideo: 'true',
+      limit: '1000',
+      fields: 'id,recorded_at,production_line,item_code,color_code,item_name,video_url',
+    })
+    const res = await fetch(`/api/records?${params}`)
+    const data = res.ok ? await res.json() : []
 
     const out: VideoItem[] = []
-    ;(data ?? []).forEach((r:any) => {
+    data.forEach((r:any) => {
       if (!r.video_url) return
       let list: {url:string;desc:string}[] = []
       try { list = JSON.parse(r.video_url) } catch { list = [{ url:r.video_url, desc:'' }] }

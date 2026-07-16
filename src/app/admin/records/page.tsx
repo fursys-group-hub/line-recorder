@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const MODE_LABEL: Record<string,string> = { quick:'불량기록', lot:'로트마감' }
 const MODE_CLS:  Record<string,string> = { quick:'bg-amber-100 text-amber-800', lot:'bg-blue-100 text-blue-800' }
@@ -140,16 +139,13 @@ export default function RecordsPage() {
 
   async function load(){
     setLoading(true)
-    let q=supabase.from('line_records').select('*')
-      .gte('recorded_at',dateFrom+'T00:00:00')
-      .lte('recorded_at',dateTo+'T23:59:59')
-      .order('recorded_at',{ascending:false})
-      .limit(500)
-    if(filterLine!=='ALL') q=q.eq('production_line',filterLine)
-    if(filterItem!=='ALL') q=q.eq('item_code',filterItem)
-    if(filterPhoto) q=q.not('photo_urls','is',null)
-    const {data}=await q
-    setRecords(data??[])
+    const params = new URLSearchParams({ filter:'custom', dateFrom, dateTo })
+    if(filterLine!=='ALL') params.set('line', filterLine)
+    if(filterItem!=='ALL') params.set('item', filterItem)
+    if(filterPhoto) params.set('hasPhoto', 'true')
+    const res = await fetch(`/api/records?${params}`)
+    const data = res.ok ? await res.json() : []
+    setRecords(data)
     setLoading(false)
   }
 
@@ -179,7 +175,7 @@ export default function RecordsPage() {
         r.photo_urls, videoStr,
       ].map(esc).join(',')
     })
-    const csv = '﻿' + [headers.join(','), ...rows].join('\r\n')  // BOM → 엑셀 한글 깨짐 방지
+    const csv = '﻿' + [headers.join(','), ...rows].join('\r\n')
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -274,39 +270,28 @@ export default function RecordsPage() {
 
                   return (
                     <tr key={r.id} className="hover:bg-gray-50 align-top">
-                      {/* 시각 */}
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtTime(r.recorded_at)}</td>
-                      {/* 모드 */}
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${MODE_CLS[r.mode]??'bg-gray-100 text-gray-600'}`}>
                           {MODE_LABEL[r.mode]??r.mode}
                         </span>
                       </td>
-                      {/* 라인 */}
                       <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">{r.production_line??'-'}</td>
-                      {/* 품목코드 */}
                       <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">{r.item_code} / {r.color_code}</td>
-                      {/* 부품명 */}
                       <td className="px-4 py-3 text-xs text-gray-600 max-w-[180px]">
                         <div className="truncate" title={r.item_name??''}>{r.item_name??'-'}</div>
                       </td>
-                      {/* 투입 */}
                       <td className="px-4 py-3 text-right tabular-nums text-gray-700">{r.input_qty??'-'}</td>
-                      {/* 양품 */}
                       <td className="px-4 py-3 text-right tabular-nums text-green-700 font-medium">{r.good_qty??'-'}</td>
-                      {/* 불량 */}
                       <td className="px-4 py-3 text-right tabular-nums text-red-600">{r.defect_qty??'-'}</td>
-                      {/* 수율 */}
                       <td className={`px-4 py-3 text-right font-bold ${yld!=null?yc(yld):'text-gray-300'}`}>
                         {yld!=null?`${yld.toFixed(1)}%`:'-'}
                       </td>
-                      {/* ST */}
                       <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
                         {r.st_seconds!=null?(
                           <span className="font-mono">{fmtST(r.st_seconds)}</span>
                         ):'-'}
                       </td>
-                      {/* 불량유형 */}
                       <td className="px-4 py-3">
                         {r.defect_types?(
                           <div className="flex flex-wrap gap-1">
@@ -316,15 +301,12 @@ export default function RecordsPage() {
                           </div>
                         ):'-'}
                       </td>
-                      {/* 불량자재 */}
                       <td className="px-4 py-3 text-xs text-orange-600 max-w-[160px]">
                         <div className="truncate" title={r.defect_materials??''}>{r.defect_materials??'-'}</div>
                       </td>
-                      {/* 메모 */}
                       <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px]">
                         <div className="truncate italic" title={r.memo??''}>{r.memo??'-'}</div>
                       </td>
-                      {/* 사진 */}
                       <td className="px-4 py-3 text-center">
                         {photos.length>0?(
                           <div className="flex items-center justify-center gap-1">
@@ -342,7 +324,6 @@ export default function RecordsPage() {
                           </div>
                         ):<span className="text-gray-300 text-xs">-</span>}
                       </td>
-                      {/* 동영상 */}
                       <td className="px-4 py-3 text-center">
                         {videos.length>0?(
                           <div className="flex flex-col gap-1">
@@ -356,7 +337,6 @@ export default function RecordsPage() {
                           </div>
                         ):<span className="text-gray-300 text-xs">-</span>}
                       </td>
-                      {/* 수정 */}
                       <td className="px-4 py-3 text-center">
                         <button onClick={()=>setEditRec(r)}
                           className="px-3 py-1.5 text-xs bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-medium transition-colors whitespace-nowrap">

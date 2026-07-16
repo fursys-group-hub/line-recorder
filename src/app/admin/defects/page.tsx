@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const STATUS = [
   { key:'진행', cls:'bg-blue-100 text-blue-700 border-blue-300', dot:'bg-blue-500' },
@@ -40,7 +39,6 @@ function DefectCard({ rec, onSaved }: { rec:any; onSaved:(u:any)=>void }) {
 
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col lg:flex-row">
-      {/* 좌: 불량 정보 */}
       <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-gray-100">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">불량기록</span>
@@ -71,7 +69,6 @@ function DefectCard({ rec, onSaved }: { rec:any; onSaved:(u:any)=>void }) {
         )}
       </div>
 
-      {/* 우: 회의/검토 패널 */}
       <div className="lg:w-96 flex-shrink-0 p-5 bg-gray-50/60">
         <div className="mb-3">
           <label className="block text-xs font-medium text-gray-500 mb-1.5">상태</label>
@@ -119,13 +116,10 @@ export default function DefectsPage() {
 
   async function load(){
     setLoading(true)
-    const { data } = await supabase.from('line_records').select('*')
-      .eq('mode','quick')
-      .gte('recorded_at',dateFrom+'T00:00:00')
-      .lte('recorded_at',dateTo+'T23:59:59')
-      .order('recorded_at',{ascending:false})
-      .limit(500)
-    setRecords(data??[])
+    const params = new URLSearchParams({ filter:'custom', dateFrom, dateTo, mode:'quick' })
+    const res = await fetch(`/api/records?${params}`)
+    const data = res.ok ? await res.json() : []
+    setRecords(data)
     setLoading(false)
   }
 

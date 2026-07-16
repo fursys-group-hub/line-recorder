@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 function yc(p:number){ return p>=95?'text-green-700':p>=85?'text-amber-600':'text-red-600' }
 function yb(p:number){ return p>=95?'bg-green-500':p>=85?'bg-amber-400':'bg-red-500' }
@@ -19,28 +18,24 @@ export default function DashboardPage() {
   useEffect(() => { loadStorage() }, [])
 
   async function loadStorage() {
-    const { data } = await supabase.rpc('storage_usage')
-    if (data) setStorage(data as any)
+    const res = await fetch('/api/dashboard/storage')
+    if (res.ok) { const data = await res.json(); setStorage(data) }
   }
 
   async function load() {
     setLoading(true)
-    let q = supabase.from('line_records').select('*')
-      .gte('recorded_at', dateFrom+'T00:00:00')
-      .lte('recorded_at', dateTo+'T23:59:59')
-      .order('recorded_at', { ascending: false })
-      .limit(1000)
-    if (filterLine !== 'ALL') q = q.eq('production_line', filterLine)
-    if (filterItem !== 'ALL') q = q.eq('item_code', filterItem)
-    const { data } = await q
-    setRecords(data ?? [])
+    const params = new URLSearchParams({ filter:'custom', dateFrom, dateTo, limit:'1000' })
+    if (filterLine !== 'ALL') params.set('line', filterLine)
+    if (filterItem !== 'ALL') params.set('item', filterItem)
+    const res = await fetch(`/api/records?${params}`)
+    const data = res.ok ? await res.json() : []
+    setRecords(data)
     setLoading(false)
   }
 
   const allLines = Array.from(new Set(records.map(r=>r.production_line).filter(Boolean))).sort()
   const allItems = Array.from(new Set(records.map(r=>r.item_code).filter(Boolean))).sort()
 
-  // 집계
   const grouped: Record<string,{input:number;good:number;defect:number;dt:Record<string,number>}> = {}
   records.forEach(r => {
     const key = groupBy==='item' ? `${r.item_code} / ${r.color_code}`
@@ -70,7 +65,7 @@ export default function DashboardPage() {
   const fmtMB = (b:number) => b >= 1024*1024*1024 ? (b/1024/1024/1024).toFixed(2)+' GB' : (b/1024/1024).toFixed(0)+' MB'
   const storageTotal = storage ? storage.reduce((a,s)=>a+Number(s.total_bytes),0) : 0
   const storageFiles = storage ? storage.reduce((a,s)=>a+Number(s.file_count),0) : 0
-  const storagePct = Math.min(100, storageTotal/(10*1024*1024*1024)*100) // 10GB 기준
+  const storagePct = Math.min(100, storageTotal/(10*1024*1024*1024)*100)
 
   return (
     <div className="space-y-5">

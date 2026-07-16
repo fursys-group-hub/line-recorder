@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 type Material = { id:string; material_code:string; material_color:string; material_name:string; material_category:string; is_active:boolean }
 const CATEGORIES = ['등받이','좌석','팔걸이','골조','기능부품','포장재료','소모품','부재료','기타']
 const EMPTY = { material_code:'', material_name:'', material_category:'기타', material_color:'XX' }
@@ -15,16 +14,41 @@ export default function MaterialsPage() {
   const [filter,setFilter]=useState('ALL')
 
   useEffect(()=>{ load() },[])
-  async function load() { setLoading(true); const { data }=await supabase.from('materials').select('*').order('material_category').order('material_code'); setMaterials(data??[]); setLoading(false) }
+
+  async function load() {
+    setLoading(true)
+    const res = await fetch('/api/materials')
+    const data = res.ok ? await res.json() : []
+    setMaterials(data)
+    setLoading(false)
+  }
+
   async function save() {
     if(!form.material_code||!form.material_name){ alert('자재코드와 자재명은 필수입니다'); return }
     setSaving(true)
-    if(editId) await supabase.from('materials').update({...form}).eq('id',editId)
-    else await supabase.from('materials').insert({...form})
+    if(editId) {
+      await fetch('/api/materials', {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ id:editId, ...form }),
+      })
+    } else {
+      await fetch('/api/materials', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(form),
+      })
+    }
     setShowForm(false); setEditId(null); setForm({...EMPTY}); load(); setSaving(false)
   }
+
   function startEdit(m:Material){ setForm({material_code:m.material_code,material_name:m.material_name,material_category:m.material_category,material_color:m.material_color}); setEditId(m.id); setShowForm(true) }
-  async function toggleActive(m:Material){ await supabase.from('materials').update({is_active:!m.is_active}).eq('id',m.id); load() }
+
+  async function toggleActive(m:Material){
+    await fetch('/api/materials', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id:m.id, is_active:!m.is_active }),
+    })
+    load()
+  }
 
   const filtered=materials.filter(m=>filter==='ALL'||m.material_category===filter)
   const byCat=filtered.reduce((acc,m)=>{ const c=m.material_category||'기타'; if(!acc[c])acc[c]=[]; acc[c].push(m); return acc },{} as Record<string,Material[]>)

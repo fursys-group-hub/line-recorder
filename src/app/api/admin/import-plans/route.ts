@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import pool from '@/lib/db'
 
 const nz = (v: any) => {
   if (v === undefined || v === null) return null
@@ -25,14 +25,23 @@ export async function POST(req: NextRequest) {
       status: 'active',
     }))
 
-    const { error } = await supabase
-      .from('production_plans')
-      .upsert(records, {
-        onConflict: 'item_code,color_code,pack_plan_date,lot_number',
-        ignoreDuplicates: true,
-      })
+    const cols = ['item_code','color_code','item_name','production_line','line_code','pack_plan_date','first_pack_date','plan_qty','partner','shift','lot_number','status']
+    const values: any[] = []
+    const placeholders: string[] = []
+    let idx = 1
+    for (const r of records) {
+      const ph = cols.map(() => `$${idx++}`)
+      placeholders.push(`(${ph.join(',')})`)
+      for (const c of cols) values.push(r[c])
+    }
 
-    if (error) throw error
+    await pool.query(
+      `INSERT INTO production_plans (${cols.join(',')})
+       VALUES ${placeholders.join(',')}
+       ON CONFLICT (item_code, color_code, pack_plan_date, lot_number) DO NOTHING`,
+      values,
+    )
+
     return NextResponse.json({ ok: true, inserted: records.length })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: '저장 실패: ' + (e?.message ?? e) }, { status: 500 })

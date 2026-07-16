@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 export default function AdminPlans() {
   const [plans, setPlans] = useState<any[]>([])
@@ -15,30 +14,22 @@ export default function AdminPlans() {
 
   async function load() {
     setLoading(true)
-    const { data: planData } = await supabase
-      .from('production_plans')
-      .select('*')
-      .order('pack_plan_date', { ascending: false })
-
-    const { data: records } = await supabase
-      .from('line_records')
-      .select('plan_id, good_qty')
-      .eq('mode', 'lot')
-      .not('plan_id', 'is', null)
-
-    const totalMap: Record<string, number> = {}
-    ;(records ?? []).forEach((r: any) => {
-      if (r.plan_id) totalMap[r.plan_id] = (totalMap[r.plan_id] ?? 0) + (r.good_qty ?? 0)
-    })
-
-    setPlans(planData ?? [])
-    setTotals(totalMap)
+    const res = await fetch('/api/plans?status=all&withTotals=true')
+    if (res.ok) {
+      const data = await res.json()
+      setPlans(data.plans ?? [])
+      setTotals(data.totals ?? {})
+    }
     setLoading(false)
   }
 
   async function toggleStatus(plan: any) {
     const next = plan.status === 'completed' ? 'active' : 'completed'
-    await supabase.from('production_plans').update({ status: next }).eq('id', plan.id)
+    await fetch('/api/plans', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: plan.id, status: next }),
+    })
     setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: next } : p))
   }
 
