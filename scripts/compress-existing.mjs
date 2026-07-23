@@ -24,6 +24,8 @@ import sharp from 'sharp'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MAX_DIM = 1600
 const QUALITY = 70
+const SKIP_UNDER = 600 * 1024  // 이미 이 크기보다 작으면 다운로드 없이 건너뜀 (이미 압축됨)
+const CONCURRENCY = 8          // 동시 처리 장수 (병렬)
 const isImage = (name) => /\.(jpe?g|png|webp|heic|heif)$/i.test(name)
 
 // 프로젝트 목록 로드: projects.local.json 우선, 없으면 환경변수
@@ -52,8 +54,8 @@ async function listFilesRecursive(sb, bucket, prefix = '') {
     if (!data || data.length === 0) break
     for (const item of data) {
       const path = prefix ? `${prefix}/${item.name}` : item.name
-      if (item.id) out.push(path)            // 파일 (id 있음)
-      else out.push(...await listFilesRecursive(sb, bucket, path))  // 폴더 → 재귀
+      if (item.id) out.push({ path, size: item.metadata?.size ?? null })  // 파일 (id 있음)
+      else out.push(...await listFilesRecursive(sb, bucket, path))         // 폴더 → 재귀
     }
     if (data.length < limit) break
     offset += limit
@@ -63,10 +65,21 @@ async function listFilesRecursive(sb, bucket, prefix = '') {
 
 async function compressBucket(sb, bucket, stats) {
   const files = await listFilesRecursive(sb, bucket)
-  const images = files.filter(isImage)
+  const images = files.filter(f => isImage(f.path))
   console.log(`  📦 [${bucket}] 파일 ${files.length} / 이미지 ${images.length}`)
 
-  for (const path of images) {
+  // 다운로드 없이 건너뛸 작은 파일 먼저 처리
+  const todo = []
+  for (const { path, size } of images) {
+    if (size != null && size < SKIP_UNDER) {
+      stats.skipped++; stats.before += size; stats.after += size
+    } else {
+      todo.push({ path, size })
+    }
+  }
+  console.log(`     → 압축 대상 ${todo.length}장 (건너뜀 ${images.length - todo.length}장)`)
+
+  async function processOne({ path }) {
     try {
       const { data: blob, error: dErr } = await sb.storage.from(bucket).download(path)
       if (dErr) throw dErr
@@ -80,19 +93,29 @@ async function compressBucket(sb, bucket, stats) {
 
       if (outBuf.length >= inputBuf.length) {
         stats.skipped++; stats.before += inputBuf.length; stats.after += inputBuf.length
-        continue
+        return
       }
       const { error: uErr } = await sb.storage.from(bucket).upload(path, outBuf, {
         upsert: true, contentType: 'image/jpeg', cacheControl: '3600',
       })
       if (uErr) throw uErr
       stats.done++; stats.before += inputBuf.length; stats.after += outBuf.length
-      console.log(`    ✅ ${path}  ${(inputBuf.length/1024).toFixed(0)}KB → ${(outBuf.length/1024).toFixed(0)}KB`)
+      if (stats.done % 20 === 0) console.log(`     … 압축 ${stats.done}장째`)
     } catch (e) {
       stats.failed++
       console.log(`    ❌ ${path}  실패: ${e.message ?? e}`)
     }
   }
+
+  // 동시 CONCURRENCY 개씩 병렬 처리
+  let idx = 0
+  async function worker() {
+    while (idx < todo.length) {
+      const cur = todo[idx++]
+      await processOne(cur)
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
 }
 
 async function run() {
