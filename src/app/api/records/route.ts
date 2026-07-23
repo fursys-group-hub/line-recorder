@@ -49,8 +49,8 @@ export async function GET(req: NextRequest) {
       [...params, limit],
     )
     return NextResponse.json(rows)
-  } catch (e) {
-    return NextResponse.json([], { status: 500 })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'unknown', db: !!process.env.DATABASE_URL }, { status: 500 })
   }
 }
 
