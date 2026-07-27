@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { signPaths } from '@/lib/storage'
+
+const splitPaths = (v: unknown): string[] =>
+  typeof v === 'string' && v.trim()
+    ? v.split(',').map((s) => s.trim()).filter(Boolean)
+    : []
+
+// 각 행의 photo_urls(콤마로 합쳐진 저장 경로)를 임시 조회 주소로 바꾼다.
+// 스토리지 접속이 실패해도 기록 데이터는 그대로 반환한다(사진만 일시적으로 안 보임).
+async function resolvePhotoUrls(rows: any[]): Promise<void> {
+  const all = new Set<string>()
+  for (const r of rows) splitPaths(r?.photo_urls).forEach((p) => all.add(p))
+  if (!all.size) return
+  let map: Record<string, string> = {}
+  try {
+    map = await signPaths(Array.from(all))
+  } catch {
+    return
+  }
+  for (const r of rows) {
+    const paths = splitPaths(r?.photo_urls)
+    if (paths.length) r.photo_urls = paths.map((p) => map[p] ?? p).join(',')
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -48,6 +72,7 @@ export async function GET(req: NextRequest) {
       `SELECT ${cols} FROM line_records ${where} ORDER BY recorded_at DESC LIMIT $${idx}`,
       [...params, limit],
     )
+    await resolvePhotoUrls(rows)
     return NextResponse.json(rows)
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'unknown', db: !!process.env.DATABASE_URL }, { status: 500 })

@@ -131,7 +131,7 @@ async function compressImage(file: File, maxDim=1600, quality=0.7): Promise<Blob
   return (blob && blob.size < file.size) ? blob : file
 }
 
-function PhotoUpload({ photos, onPhotos }: { photos:string[]; onPhotos:(p:string[])=>void }) {
+function PhotoUpload({ photos, onPhotos }: { photos:{path:string;url:string}[]; onPhotos:(p:{path:string;url:string}[])=>void }) {
   const fileRef=useRef<HTMLInputElement>(null); const slotRef=useRef(0); const MAX=5
   const [uploading,setUploading]=useState(false)
   async function handleFile(e:React.ChangeEvent<HTMLInputElement>) {
@@ -144,7 +144,7 @@ function PhotoUpload({ photos, onPhotos }: { photos:string[]; onPhotos:(p:string
       const res=await fetch('/api/upload',{method:'POST',body:formData})
       const data=await res.json()
       if(!data.ok) throw new Error(data.error)
-      const next=[...photos]; next[slotRef.current]=data.url; onPhotos(next)
+      const next=[...photos]; next[slotRef.current]={path:data.path,url:data.url}; onPhotos(next)
     } catch(err){ alert('사진 업로드 실패. 다시 시도해주세요.') }
     setUploading(false); e.target.value=''
   }
@@ -158,7 +158,7 @@ function PhotoUpload({ photos, onPhotos }: { photos:string[]; onPhotos:(p:string
           return src?(
             <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-black border-2 border-green-200">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt="" className="w-full h-full object-cover" />
+              <img src={src.url} alt="" className="w-full h-full object-cover" />
               <button onClick={()=>del(i)} className="absolute top-1 right-1 w-5 h-5 bg-black/60 text-white rounded-full text-xs flex items-center justify-center">×</button>
             </div>
           ):(
@@ -181,7 +181,7 @@ function RecordForm() {
   const [inputQty,setInputQty]=useState(0); const [goodQty,setGoodQty]=useState(0); const [defectQty,setDefectQty]=useState(0)
   const [defects,setDefects]=useState<string[]>([]); const [materials,setMaterials]=useState<Material[]>([])
   const [selMats,setSelMats]=useState<string[]>([]); const [stSeconds,setStSeconds]=useState(0)
-  const [photos,setPhotos]=useState<string[]>([])
+  const [photos,setPhotos]=useState<{path:string;url:string}[]>([])
   const [videos,setVideos]=useState<{url:string;desc:string}[]>([{url:'',desc:''}])
   const [memo,setMemo]=useState('')
   const [submitting,setSubmitting]=useState(false); const [plansLoading,setPlansLoading]=useState(true)
@@ -245,7 +245,7 @@ function RecordForm() {
         item_name:selPlan.item_name, production_line:selPlan.production_line, shift:selPlan.shift,
         input_qty:mode!=='quick'?inputQty:null, good_qty:mode!=='quick'?goodQty:null,
         defect_qty:defectQty||null, defect_types:defects, defect_materials:selMats,
-        st_seconds:mode!=='quick'&&stSeconds>0?stSeconds:null, photo_urls:photos,
+        st_seconds:mode!=='quick'&&stSeconds>0?stSeconds:null, photo_urls:photos.map(p=>p.path),
         video_url:videos.some(v=>v.url.trim())?JSON.stringify(videos.filter(v=>v.url.trim())):null,
         memo:memo||null})})
     const data=await res.json()

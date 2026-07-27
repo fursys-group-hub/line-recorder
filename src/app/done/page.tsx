@@ -30,7 +30,7 @@ function DoneContent() {
         </svg>
       </div>
       <h1 className="text-xl font-medium text-green-800 mb-1">기록 완료</h1>
-      <p className="text-sm text-gray-500 mb-6">Supabase 저장 완료 · Google Sheets 5분 내 반영</p>
+      <p className="text-sm text-gray-500 mb-6">저장 완료 · Google Sheets 5분 내 반영</p>
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-sm p-5 mb-6">
         <table className="w-full text-sm">
           <tbody>

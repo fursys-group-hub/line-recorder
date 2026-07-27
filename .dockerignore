@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env*.local
+npm-debug.log*
+# 일회성 스크립트·비밀 설정 (컨테이너에 넣지 않음)
+scripts
+_check_main.js
+_diag_check.mjs
+_diag_sep.mjs
+main_page.tsx
+records_page.tsx
+serve-calc.py
+*.log
+README.md

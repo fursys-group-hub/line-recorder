@@ -31,3 +31,5 @@ next-env.d.ts
 
 # 스크립트용 비밀 설정 (service_role 키 포함 — 절대 커밋 금지)
 scripts/projects.local.json
+scripts/*.local.json
+scripts/migrate-progress.json

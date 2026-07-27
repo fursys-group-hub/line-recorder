@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { signPaths } from '@/lib/storage'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -22,7 +23,11 @@ export async function POST(req: NextRequest) {
     photoUrls = raw.split(',')   // ← 콤마로 분리 (사진 2장 이상 처리)
   }
   photoUrls = photoUrls.map((u: string) => String(u).trim()).filter(Boolean)
-  const firstPhoto = photoUrls[0] || null
+  // 비공개 버킷 → 저장 경로를 임시 주소(signed URL, 7일)로 변환. (이미 전체 URL이면 그대로 사용)
+  let signedMap: Record<string, string> = {}
+  try { signedMap = await signPaths(photoUrls, 604800) } catch { signedMap = {} }
+  const signedPhotos = photoUrls.map((p) => signedMap[p] ?? p)
+  const firstPhoto = signedPhotos[0] || null
 
   // 모드별 헤더
   const suffix = edited ? '수정되었습니다 ✏️' : '등록되었습니다'
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
 
   // 사진: 항상 텍스트 링크로 먼저 넣어둔다 (이미지 미리보기가 실패해도 링크는 남도록)
   if (photoUrls.length > 0) {
-    const links = photoUrls
+    const links = signedPhotos
       .map((url: string, i: number) => `<${url}|사진 ${i + 1}>`)
       .join('   ')
     blocks.push({
